@@ -6212,7 +6212,7 @@ reduce over all of them.
 
 Args:
     {input}
-    {dim}
+    {opt_dim}
     {keepdim}
 
 Keyword args:
