@@ -3014,6 +3014,45 @@ def sample_inputs_add_sub(op, device, dtype, requires_grad, **kwargs):
     else:
         yield SampleInput(lhs, args=(rhs,), kwargs={'alpha': False})
 
+def error_inputs_arange(op, device, **kwargs):
+    yield ErrorInput(SampleInput(0, args=(3, 0)), error_type=RuntimeError, error_regex='step must be nonzer')
+    yield ErrorInput(SampleInput(0, args=(-3, 2)), error_type=RuntimeError, error_regex='bound inconsistent with step sign')
+    yield ErrorInput(SampleInput(0, args=(3, -2)), error_type=RuntimeError, error_regex='bound inconsistent with step sign')
+    yield ErrorInput(SampleInput(0, args=(float('inf'), 2)), error_type=RuntimeError, error_regex='unsupported range')
+    yield ErrorInput(SampleInput(float('-inf'), args=(1, 2)), error_type=RuntimeError, error_regex='unsupported range')
+
+def sample_inputs_arange(op, device, dtype, requires_grad, **kwargs):
+    # Also see tests in test/test_tensor_creation_ops.py
+    # We won't attempt to merge those here since outputs are explicity checked there
+    ends = (0, 1, 2, 10, 50)
+    # Start is optional, but we currently don't test `None` because ref does not support
+    # multiple overloads and having optional arguments precede non-optional arguments
+    starts = (1, 3, 10, 50)
+    steps = (None, 1, 3, 7)
+    for start, end in product(starts, ends):
+        for sign in (1, -1):
+            if (start >= end and sign == 1) or (start <= end and sign == -1):
+                continue
+            for step in steps:
+                if step is not None:
+                    step = sign * step
+                else:
+                    step = sign
+
+                # Even though we support complex dtype, we don't check passing
+                # complex numbers to start, end, step
+                if dtype.is_floating_point:
+                    start += 0.1
+                    end += 0.1
+                    step += 0.1
+
+                if step is None:
+                    yield SampleInput(start, args=(end,))
+                else:
+                    yield SampleInput(start, args=(end, step))
+
+
+
 def sample_inputs_isclose(op, device, dtype, requires_grad, **kwargs):
     yield from sample_inputs_elementwise_binary(op, device, dtype, requires_grad, **kwargs)
 
@@ -10663,6 +10702,35 @@ op_db: List[OpInfo] = [
                                      'test_reference_numerics_extremal_values',
                                      dtypes=(torch.complex64, torch.complex128)),
                     )),
+    OpInfo('arange',
+           dtypes=all_types_and_complex_and(torch.bool, torch.bfloat16, torch.float16),
+           supports_out=True,
+           supports_autograd=False,
+           error_inputs_func=error_inputs_arange,
+           sample_inputs_func=sample_inputs_arange,
+           skips=(
+               # https://github.com/pytorch/pytorch/issues/81774
+               DecorateInfo(unittest.expectedFailure, 'TestNormalizeOperators', 'test_normalize_operator_exhaustive'),
+               DecorateInfo(unittest.expectedFailure, 'TestOperatorSignatures', 'test_get_torch_func_signature_exhaustive'),
+
+               # Tests that assume input is a tensor or sequence of tensors
+               DecorateInfo(unittest.expectedFailure, "TestCommon", "test_noncontiguous_samples"),
+               DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_variant_consistency_eager'),
+               DecorateInfo(unittest.expectedFailure, 'TestMathBits', 'test_neg_view'),
+               DecorateInfo(unittest.expectedFailure, 'TestMathBits', 'test_conj_view'),
+               DecorateInfo(unittest.expectedFailure, 'TestMathBits', 'test_neg_conj_view'),
+
+               # Captured graph does not contain aten::arange (succeeds on complex!)
+               # g: graph():
+               #   %25 : Long(1, strides=[1], requires_grad=0, device=cpu) = prim::Constant[value={1}]()
+               #   return (%25)
+               DecorateInfo(unittest.expectedFailure, 'TestJit', 'test_variant_consistency_jit', dtypes=(torch.float32,)),
+
+               # UserWarning not triggered : Resized a non-empty tensor but did not warn about it.
+               DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out_warning'),
+               # Expected RuntimeError when unsafe cast from torch.float32 into an out= with dtype torch.long
+               DecorateInfo(unittest.expectedFailure, 'TestCommon', 'test_out')
+           )),
     BinaryUfuncInfo('clamp_max',
                     ref=_clamp_max_numpy,
                     dtypes=all_types_and(torch.bool, torch.float16, torch.bfloat16),
@@ -20278,6 +20346,16 @@ python_ref_db = [
         "_refs.asinh",
         torch_opinfo_name="asinh",
         supports_nvfuser=False,
+    ),
+    PythonRefInfo(
+        "_refs.arange",
+        torch_opinfo_name="arange",
+        skips=(
+            # Tests that assume input is a tensor or sequence of tensors
+            DecorateInfo(unittest.expectedFailure, 'TestMathBits', 'test_neg_view'),
+            DecorateInfo(unittest.expectedFailure, 'TestMathBits', 'test_conj_view'),
+            DecorateInfo(unittest.expectedFailure, 'TestMathBits', 'test_neg_conj_view'),
+        )
     ),
     ElementwiseUnaryPythonRefInfo(
         "_refs.atan",

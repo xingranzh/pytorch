@@ -234,6 +234,7 @@ __all__ = [
     "scalar_tensor",
     "zeros",
     "zeros_like",
+    "arange",
     #
     # Randomness References
     #
@@ -2982,6 +2983,33 @@ def empty_like(
     strides = utils.compute_elementwise_output_strides(a)
     return torch.empty_strided(
         a.shape, strides, dtype=dtype, device=device, requires_grad=requires_grad
+    )
+
+
+@register_decomposition(torch.ops.aten.arange)
+@out_wrapper()
+def arange(
+    start: NumberType,
+    end: NumberType,
+    step: NumberType = 1,
+    *,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[torch.device] = None,
+    layout: torch.layout = torch.strided,
+    pin_memory: bool = False,
+    requires_grad: bool = False,
+) -> TensorLikeType:
+    # TODO: update to pass pin_memory and requires_grad once prim supports it
+    # We allow them to be passed to ref to appease decomposition tests
+    return prims.arange(
+        start,
+        end,
+        step,
+        dtype=dtype,
+        device=device,
+        # layout=layout,
+        # pin_memory=pin_memory,
+        requires_grad=requires_grad,
     )
 
 
