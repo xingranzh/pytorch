@@ -284,6 +284,24 @@ Tensor& add_scalar_(Tensor& self, const Scalar& other, const Scalar& alpha) {
       self, other, c10::optional<Scalar>(alpha), VK_KERNEL(add_scalar_));
 }
 
+Tensor quantized_add(
+    const Tensor& self_arg,
+    const Tensor& other_arg,
+    const double scale,
+    const int64_t zero_point) {
+  return quantized_arithmetic_tensor(
+      self_arg, other_arg, scale, zero_point, VK_KERNEL(quantized_add));
+}
+
+Tensor quantized_sub(
+    const Tensor& self_arg,
+    const Tensor& other_arg,
+    const double scale,
+    const int64_t zero_point) {
+  return quantized_arithmetic_tensor(
+      self_arg, other_arg, scale, zero_point, VK_KERNEL(quantized_sub));
+}
+
 Tensor add_tensor(
     const Tensor& self_arg,
     const Tensor& other_arg,
